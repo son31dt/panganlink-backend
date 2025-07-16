@@ -119,16 +119,42 @@ app.get('/api/produk', async (req, res) => {
 });
 
 // Endpoint untuk mengambil SATU produk berdasarkan ID
-app.get('/api/produk/:id', async (req, res) => {
+// Ganti endpoint GET /api/produk yang lama dengan versi baru ini
+app.get('/api/produk', async (req, res) => {
     try {
-        const { id } = req.params; // Mengambil ID dari parameter URL
-        const product = await pool.query("SELECT * FROM Produk WHERE produk_id = $1", [id]);
+        const { search, kategori, lokasi } = req.query; // Tambahkan 'lokasi'
 
-        if (product.rows.length === 0) {
-            return res.status(404).json({ message: 'Produk tidak ditemukan' });
+        let baseQuery = `
+            SELECT p.*, t.nama_toko, t.lokasi 
+            FROM Produk p 
+            JOIN Toko t ON p.toko_id = t.toko_id
+        `;
+        const params = [];
+        const conditions = [];
+
+        if (search) {
+            params.push(`%${search}%`);
+            conditions.push(`p.nama_produk ILIKE $${params.length}`);
+        }
+        if (kategori) {
+            params.push(kategori);
+            conditions.push(`p.kategori_id = $${params.length}`);
+        }
+        // --- BLOK BARU UNTUK FILTER LOKASI ---
+        if (lokasi) {
+            params.push(lokasi);
+            conditions.push(`t.lokasi = $${params.length}`);
+        }
+        // --- AKHIR BLOK BARU ---
+
+        if (conditions.length > 0) {
+            baseQuery += " WHERE " + conditions.join(" AND ");
         }
 
-        res.json(product.rows[0]);
+        baseQuery += " ORDER BY p.nama_produk";
+
+        const semuaProduk = await pool.query(baseQuery, params);
+        res.json(semuaProduk.rows);
     } catch (error) {
         console.error(error.message);
         res.status(500).json({ message: 'Terjadi kesalahan pada server' });
